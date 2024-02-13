@@ -6,6 +6,7 @@ use std::collections::HashSet;
 use std::fmt::Display;
 use std::os::unix::fs::MetadataExt;
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::fs::OpenOptions;
 use tokio::io::AsyncWriteExt;
@@ -90,7 +91,7 @@ where
         .for_each(|x| filter_content.push(x));
     let failed = Arc::new(Mutex::new(failed));
 
-    let (ctrl_c_handler, ctrl_c_break_switch) = get_ctrl_c_handler(
+    let (ctrl_c_handler, cancellation_token) = get_ctrl_c_handler(
         "downloaded.json",
         downloaded.clone(),
         "failed.json",
@@ -114,8 +115,7 @@ where
     let mut exited_prematurly = ExitedPrematurly::NO;
     for symbol in symbols {
         {
-            let (errors_lock, ctrl_c_switch) = (errors_in_row.lock(), ctrl_c_break_switch.lock());
-            let (errors_lock, ctrl_c_switch) = tokio::join!(errors_lock, ctrl_c_switch);
+            let errors_lock = errors_in_row.lock().await;
             if *errors_lock > max_errors_in_row {
                 eprintln!(
                     "[{}] We have failed {} times in a row. Exiting now...",
@@ -124,9 +124,9 @@ where
                 exited_prematurly = ExitedPrematurly::YES;
                 break;
             }
-            if *ctrl_c_switch {
+            if cancellation_token.load(Ordering::SeqCst) {
                 eprintln!("[{}] Ctrl+C is pressed. Exiting...", &dump_prices_txt);
-                break;
+                return Ok(ExitedPrematurly::YES);
             }
         }
 
@@ -203,12 +203,12 @@ fn get_ctrl_c_handler<T, S>(
     downloaded: Arc<Mutex<Vec<S>>>,
     failed_file_name: T,
     failed: Arc<Mutex<Vec<S>>>,
-) -> (tokio::task::JoinHandle<()>, Arc<Mutex<bool>>)
+) -> (tokio::task::JoinHandle<()>, Arc<AtomicBool>)
 where
     T: AsRef<Path> + Display + Send + Sync + 'static,
     S: Serialize + Send + Sync + 'static,
 {
-    let break_switch = Arc::new(Mutex::new(false));
+    let break_switch = Arc::new(AtomicBool::new(false));
     let break_switch_c = break_switch.clone();
     let handle = tokio::spawn(async move {
         signal::ctrl_c().await.expect("Failed to listen for ctrl_c");
@@ -241,9 +241,7 @@ where
                 }
             }
         }
-
-        let mut lock = break_switch_c.lock().await;
-        *lock = true;
+        break_switch_c.store(true, Ordering::SeqCst);
     });
     (handle, break_switch)
 }
