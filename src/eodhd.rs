@@ -1,7 +1,7 @@
 use std::{fmt::Display, sync::Arc, time::Duration};
 
 use anyhow::{anyhow, Result};
-use chrono::{NaiveDateTime, TimeDelta, TimeZone, Utc};
+use chrono::{DateTime, TimeDelta, TimeZone, Utc};
 use colored::{ColoredString, Colorize};
 use futures::lock::Mutex;
 use reqwest::Client;
@@ -24,6 +24,7 @@ where
     total_requests: Arc<Mutex<usize>>,
     get_url: ColoredString,
     error: ColoredString,
+    lower_intraday_bound_timestamp: DateTime<Utc>,
 }
 
 impl<T> Eodhd<T>
@@ -31,12 +32,16 @@ where
     T: Display,
 {
     pub fn new(token: T) -> Self {
+        let lower = Utc.with_ymd_and_hms(2020, 10, 1, 0, 0, 0);
+        let lower_intraday_bound_timestamp = lower.unwrap();
+
         Self {
             client: Client::new(),
             api_token: token,
             total_requests: Arc::new(Mutex::new(0)),
             get_url: "GET URL".bold(),
             error: "ERROR".red(),
+            lower_intraday_bound_timestamp,
         }
     }
 
@@ -44,19 +49,11 @@ where
         &self,
         ticker: impl Display,
         exchange_short_code: impl Display,
-        to_date: Option<NaiveDateTime>,
-        max_from_date: Option<NaiveDateTime>,
+        to_date: Option<DateTime<Utc>>,
+        max_from_date: Option<DateTime<Utc>>,
     ) -> Result<Vec<Intraday>> {
-        let to_date = to_date.unwrap_or_else(|| chrono::Local::now().naive_utc());
-        let max_from_date = max_from_date
-            .and_then(|x| {
-                if x - to_date > TIMEDELTA {
-                    Some(x)
-                } else {
-                    None
-                }
-            })
-            .unwrap_or_else(|| to_date - TIMEDELTA);
+        let mut to_date = to_date.unwrap_or_else(|| chrono::Local::now().to_utc());
+        let max_from_date = max_from_date.unwrap_or_else(|| self.lower_intraday_bound_timestamp);
 
         let v_size = {
             let week_days = (to_date - max_from_date).num_days() * 5 / 7;
@@ -68,9 +65,15 @@ where
 
         let mut intradays = Vec::with_capacity(v_size);
         while to_date > max_from_date {
+            let from_date = if max_from_date - to_date >= TIMEDELTA {
+                max_from_date
+            } else {
+                to_date - TIMEDELTA
+            };
+
             let url = format!(
             "{API_URL}/intraday/{ticker}.{exchange_short_code}?api_token={}&interval=5m&fmt=json&from={}&to={}",
-            self.api_token, Utc.from_utc_datetime(&max_from_date).timestamp(), Utc.from_utc_datetime(&to_date).timestamp());
+            self.api_token, from_date.timestamp(), to_date.timestamp());
 
             let mut result = self
                 .get_url::<Vec<Value>, _>(&url, Some(5))
@@ -80,19 +83,9 @@ where
                 .filter_map(Result::ok)
                 .collect::<Vec<Intraday>>();
 
-            let min = result.iter().map(|intraday| intraday.datetime).min();
-            let max = result.iter().map(|intraday| intraday.datetime).max();
-            let (min, max) = if let (Some(min), Some(max)) = (min, max) {
-                (min, max)
-            } else {
-                break;
-            };
             intradays.append(&mut result);
 
-            // The span has clearly ended
-            if max - min < TIMEDELTA - TimeDelta::days(42) {
-                break;
-            }
+            to_date -= TIMEDELTA;
         }
 
         Ok(intradays)
