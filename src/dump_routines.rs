@@ -181,6 +181,8 @@ where
             );
         }
     }
+
+    println!("[{}] Waiting for all tasks to finish...", &dump_prices_txt);
     for handle in handles.into_iter() {
         if let Err(e) = handle.await {
             eprintln!(
@@ -189,6 +191,7 @@ where
             );
         }
     }
+    println!("[{}] Aborting ctrl-c handler...", &dump_prices_txt);
     ctrl_c_handler.abort();
 
     Ok(exited_prematurly)
