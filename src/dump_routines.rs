@@ -182,6 +182,7 @@ where
         }
     }
 
+    let dump_prices_txt = "DUMP PRICES".bold().blue();
     println!("[{}] Waiting for all tasks to finish...", &dump_prices_txt);
     for handle in handles.into_iter() {
         if let Err(e) = handle.await {
