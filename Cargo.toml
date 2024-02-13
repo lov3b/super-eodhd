@@ -1,0 +1,21 @@
+[package]
+name = "super-eodhd"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = { version = "1.0.79", features = ["backtrace"] }
+chrono = { version = "0.4.34", features = ["serde"] }
+colored = "2.1.0"
+flap = "0.0.11"
+futures = "0.3.30"
+lazy_static = "1.4.0"
+reqwest = { version = "0.11.24", features = ["json"] }
+serde = { version = "1.0.196", features = ["serde_derive", "rc"] }
+serde_json = "1.0.113"
+serde_with = { version = "3.6.1", features = ["macros"] }
+sqlx = { version = "0.7.3", features = ["mysql", "chrono", "runtime-async-std"] }
+structopt = { version = "0.3.26", features = ["color", "suggestions"] }
+tokio = { version = "1.36.0", features = ["full", "signal"] }
