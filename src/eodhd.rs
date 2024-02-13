@@ -121,7 +121,6 @@ where
         D: DeserializeOwned + Default,
         &'a U: IntoUrl + Display,
     {
-        println!("url {}", &url);
         let response = {
             let mut i = 0;
             loop {
