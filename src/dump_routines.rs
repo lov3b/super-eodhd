@@ -112,7 +112,6 @@ where
     let errors_in_row = Arc::new(Mutex::new(0 as usize));
     let mut handles = Vec::new();
 
-    let mut exited_prematurly = ExitedPrematurly::NO;
     for symbol in symbols {
         {
             let errors_lock = errors_in_row.lock().await;
@@ -121,8 +120,7 @@ where
                     "[{}] We have failed {} times in a row. Exiting now...",
                     &dump_prices_txt, max_errors_in_row
                 );
-                exited_prematurly = ExitedPrematurly::YES;
-                break;
+                return Ok(ExitedPrematurly::YES);
             }
             if cancellation_token.load(Ordering::SeqCst) {
                 eprintln!("[{}] Ctrl+C is pressed. Exiting...", &dump_prices_txt);
@@ -195,7 +193,7 @@ where
     println!("[{}] Aborting ctrl-c handler...", &dump_prices_txt);
     ctrl_c_handler.abort();
 
-    Ok(exited_prematurly)
+    Ok(ExitedPrematurly::NO)
 }
 
 fn get_ctrl_c_handler<T, S>(
