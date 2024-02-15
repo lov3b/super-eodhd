@@ -1,9 +1,8 @@
-use std::{fmt::Display, sync::Arc, time::Duration};
+use std::{fmt::Display, time::Duration};
 
 use anyhow::{anyhow, Result};
 use chrono::{DateTime, TimeDelta, TimeZone, Utc};
 use colored::{ColoredString, Colorize};
-use futures::lock::Mutex;
 use reqwest::Client;
 use reqwest::IntoUrl;
 use serde::de::DeserializeOwned;
@@ -21,7 +20,6 @@ where
 {
     client: Client,
     api_token: T,
-    total_requests: Arc<Mutex<usize>>,
     get_url: ColoredString,
     error: ColoredString,
     lower_intraday_bound_timestamp: DateTime<Utc>,
@@ -38,7 +36,6 @@ where
         Self {
             client: Client::new(),
             api_token: token,
-            total_requests: Arc::new(Mutex::new(0)),
             get_url: "GET URL".bold(),
             error: "ERROR".red(),
             lower_intraday_bound_timestamp,
@@ -76,7 +73,7 @@ where
             self.api_token, from_date.timestamp(), to_date.timestamp());
 
             let mut result = self
-                .get_url::<Vec<Value>, _>(&url, Some(5))
+                .get_url::<Vec<Value>, _>(&url)
                 .await?
                 .into_iter()
                 .map(serde_json::from_value)
@@ -101,7 +98,7 @@ where
         );
 
         Ok(self
-            .get_url::<Vec<Value>, _>(&url, Some(10))
+            .get_url::<Vec<Value>, _>(&url)
             .await?
             .into_iter()
             .map(serde_json::from_value)
@@ -115,7 +112,6 @@ where
     async fn get_url<'a, D, U>(
         &'a self,
         url: &'a U,
-        increment_requests_by: Option<usize>,
     ) -> Result<D>
     where
         D: DeserializeOwned + Default,
@@ -124,11 +120,6 @@ where
         let response = {
             let mut i = 0;
             loop {
-                if let Some(increment) = increment_requests_by {
-                    let mut total_requests = self.total_requests.lock().await;
-                    (*total_requests) += increment;
-                }
-
                 i += 1;
                 if i > 10 {
                     return Err(anyhow!("Got status code '429' 10 times in a row"));
