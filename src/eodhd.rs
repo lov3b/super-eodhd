@@ -109,10 +109,7 @@ where
     /**
      * Will return Default::default() if 404 is gotten
      */
-    async fn get_url<'a, D, U>(
-        &'a self,
-        url: &'a U,
-    ) -> Result<D>
+    async fn get_url<'a, D, U>(&'a self, url: &'a U) -> Result<D>
     where
         D: DeserializeOwned + Default,
         &'a U: IntoUrl + Display,

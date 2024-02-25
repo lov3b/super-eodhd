@@ -24,7 +24,7 @@ pub async fn dump<T, Ex>(
     threads: usize,
 ) -> Result<()>
 where
-    T: Display + Send + Sync + 'static,
+    T: Display + Send + Sync + 'static + Serialize,
     Ex: Display,
 {
     let (dump_txt, error_txt) = ("DUMP".bold().magenta(), "ERROR".red());
@@ -67,7 +67,7 @@ async fn dump_prices<T, Ex>(
     threads: usize,
 ) -> Result<ExitedPrematurly>
 where
-    T: Display + Send + Sync + 'static,
+    T: Display + Send + Sync + 'static + Serialize,
     Ex: Display,
 {
     let (dump_prices_txt, error_txt) = (
@@ -120,6 +120,12 @@ where
                     "[{}] We have failed {} times in a row. Exiting now...",
                     &dump_prices_txt, max_errors_in_row
                 );
+                aux_config_save("./downloaded.json", downloaded.lock().await.to_vec())
+                    .await
+                    .unwrap();
+                aux_config_save("./failed.json", failed.lock().await.to_vec())
+                    .await
+                    .unwrap();
                 return Ok(ExitedPrematurly::YES);
             }
             if cancellation_token.load(Ordering::SeqCst) {
