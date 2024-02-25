@@ -7,6 +7,7 @@ use reqwest::Client;
 use reqwest::IntoUrl;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
+use tokio::time;
 
 use crate::models::ExchangeSymbol;
 use crate::models::Intraday;
@@ -23,13 +24,14 @@ where
     get_url: ColoredString,
     error: ColoredString,
     lower_intraday_bound_timestamp: DateTime<Utc>,
+    delay: time::Duration,
 }
 
 impl<T> Eodhd<T>
 where
     T: Display,
 {
-    pub fn new(token: T) -> Self {
+    pub fn new(token: T, delay: Duration) -> Self {
         let lower = Utc.with_ymd_and_hms(2020, 10, 1, 0, 0, 0);
         let lower_intraday_bound_timestamp = lower.unwrap();
 
@@ -39,6 +41,7 @@ where
             get_url: "GET URL".bold(),
             error: "ERROR".red(),
             lower_intraday_bound_timestamp,
+            delay,
         }
     }
 
@@ -49,6 +52,8 @@ where
         to_date: Option<DateTime<Utc>>,
         max_from_date: Option<DateTime<Utc>>,
     ) -> Result<Vec<Intraday>> {
+        let mut lower_time_limit = None;
+
         let mut to_date = to_date.unwrap_or_else(|| chrono::Local::now().to_utc());
         let max_from_date = max_from_date.unwrap_or_else(|| self.lower_intraday_bound_timestamp);
 
@@ -81,8 +86,14 @@ where
                 .collect::<Vec<Intraday>>();
 
             intradays.append(&mut result);
-
             to_date -= TIMEDELTA;
+
+            if let Some(lower_time_limit) = lower_time_limit {
+                if time::Instant::now() < lower_time_limit {
+                    time::sleep_until(lower_time_limit).await;
+                }
+            }
+            lower_time_limit = Some(time::Instant::now() + self.delay);
         }
 
         Ok(intradays)

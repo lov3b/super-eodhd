@@ -8,7 +8,7 @@ async fn main() -> Result<()> {
     let dump = opt.is_dump();
     let co = opt.drain_opts();
     let db = Db::new(co.username, co.password, co.host, co.db_name).await?;
-    let client = Eodhd::new(co.api_key);
+    let client = Eodhd::new(co.api_key, tokio::time::Duration::from_millis(700));
 
     if dump {
         match dump_routines::dump("US", client, db, co.threads).await {
