@@ -211,7 +211,7 @@ where
             &dump_prices_txt,
             &symbol.code,
             symbol.isin.as_ref().map(AsRef::as_ref).unwrap_or("missing"),
-            "EMPTY".blink()
+            "EMPTY".underline()
         );
         return Ok(());
     }
