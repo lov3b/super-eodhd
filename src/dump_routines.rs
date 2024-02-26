@@ -240,6 +240,9 @@ pub async fn selective_sync<T, S, Ex>(
     S: Display,
     Ex: Display,
 {
+    let config = SyncedConfig::<Box<str>>::load().await;
+    let mut downloaded = config.downloaded.clone().lock_owned().await;
+
     let fn_text = format!("[{}]", "SELECTIVE SYNC".bold().yellow());
     let exchange_short_code = exchange_short_code.to_string();
     if let Err(_) = sync_metadata(&exchange_short_code, eodhd, db).await {
@@ -271,9 +274,15 @@ pub async fn selective_sync<T, S, Ex>(
             .await
         {
             download_txt.push_str(format!(", failed to push to DB with error: {:?}", e).as_str());
+        } else {
+            let short_code = short_code.into_boxed_str();
+            if !downloaded.contains(&short_code) {
+                downloaded.push(short_code);
+            }
         }
 
         eprintln!("{}", download_txt);
+        config.save(None).await.unwrap();
     }
 }
 
