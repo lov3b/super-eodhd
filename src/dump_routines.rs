@@ -229,3 +229,82 @@ where
 
     Ok(())
 }
+
+pub async fn selective_sync<T, S, Ex>(
+    exchange_short_code: Ex,
+    short_codes: Vec<S>,
+    eodhd: &Eodhd<T>,
+    db: &Db,
+) where
+    T: Display,
+    S: Display,
+    Ex: Display,
+{
+    let fn_text = format!("[{}]", "SELECTIVE SYNC".bold().yellow());
+    let exchange_short_code = exchange_short_code.to_string();
+    if let Err(_) = sync_metadata(&exchange_short_code, eodhd, db).await {
+        return;
+    }
+    eprintln!("{} Syncing {} instruments", &fn_text, short_codes.len());
+
+    for short_code in short_codes {
+        let short_code = short_code.to_string().to_uppercase();
+        let mut download_txt = fn_text.clone();
+        download_txt.push(' ');
+        download_txt.push_str(&short_code);
+
+        let data = match eodhd
+            .get_high_resolution_historical_data(&short_code, &exchange_short_code, None, None)
+            .await
+        {
+            Ok(k) => k,
+            Err(e) => {
+                download_txt.push_str(format!(", Failed with error: {:?} ", e).as_str());
+                eprintln!("{}", download_txt);
+                continue;
+            }
+        };
+
+        download_txt.push_str(format!(", with {}st points", data.len()).as_str());
+        if let Err(e) = db
+            .push_intraday(&short_code, &exchange_short_code, &data)
+            .await
+        {
+            download_txt.push_str(format!(", failed to push to DB with error: {:?}", e).as_str());
+        }
+
+        eprintln!("{}", download_txt);
+    }
+}
+
+async fn sync_metadata<T>(exchange_short_code: &str, eodhd: &Eodhd<T>, db: &Db) -> Result<()>
+where
+    T: Display,
+{
+    let fn_text = "SYNC METADATA".bold().green();
+    eprintln!("{} Downloading all instrument metadatas", &fn_text);
+    // Make sure that we have the symbols in the DB
+    let all_instruments = match eodhd.get_exchange_symbols(&exchange_short_code).await {
+        Ok(k) => k,
+        Err(e) => {
+            eprintln!(
+                "{} Failed to download instrument metadatas with error: {:?}",
+                &fn_text, &e
+            );
+            return Err(e);
+        }
+    };
+    eprintln!("{} Pushing metdata to DB", &fn_text);
+    if let Err(e) = db
+        .push_exchange_symbols(&exchange_short_code, all_instruments)
+        .await
+    {
+        eprintln!(
+            "{} Failed to push instrument metadatas with error: {:?}",
+            &fn_text, &e
+        );
+        return Err(e);
+    }
+    eprintln!("{} Done", fn_text);
+    Ok(())
+}
